@@ -1,0 +1,12 @@
+# Godot 4
+.godot/
+*.uid
+
+# C# / Mono
+.mono/
+data_*/
+mono_crash.*.json
+*.user
+.vs/
+bin/
+obj/
