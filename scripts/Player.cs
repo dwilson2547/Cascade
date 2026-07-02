@@ -73,11 +73,8 @@ public partial class Player : CharacterBody3D
 
     private const float SlideStopThreshold = 0.1f;
 
-    private Camera3D? _camera;
-
     public override void _Ready()
     {
-        _camera = GetViewport().GetCamera3D();
         _spawnPosition = GlobalPosition;
     }
 
@@ -298,9 +295,14 @@ public partial class Player : CharacterBody3D
 
     /// <summary>
     /// Converts a 2D WASD input vector into a world-space direction relative
-    /// to the active camera's facing, flattened onto the XZ (horizontal)
-    /// plane. Used by Grounded (Task 3) and will be reused for air control
-    /// and redirects in later tasks.
+    /// to the camera, flattened onto the XZ (horizontal) plane. Derived
+    /// directly from Rotation.Y rather than reading the camera node's
+    /// transform: PlayerCamera keeps Rotation.Y unconditionally synced to its
+    /// own yaw on every mouse-motion event (see PlayerCamera.cs), so the two
+    /// are always identical, and computing from Rotation.Y avoids a
+    /// cross-node, tick-order dependency on when PlayerCamera._PhysicsProcess
+    /// happens to run relative to this method. See PlayerCamera.cs's sign-
+    /// convention comment for the forward/right derivation from yaw.
     /// </summary>
     private Vector3 CameraRelativeDirection(Vector2 inputVector)
     {
@@ -309,21 +311,9 @@ public partial class Player : CharacterBody3D
             return Vector3.Zero;
         }
 
-        Camera3D camera = _camera ?? GetViewport().GetCamera3D();
-        if (camera == null)
-        {
-            return Vector3.Zero;
-        }
-
-        Basis cameraBasis = camera.GlobalTransform.Basis;
-
-        Vector3 forward = cameraBasis.Z * -1.0f;
-        forward.Y = 0.0f;
-        forward = forward.Normalized();
-
-        Vector3 right = cameraBasis.X;
-        right.Y = 0.0f;
-        right = right.Normalized();
+        float yaw = Rotation.Y;
+        Vector3 forward = new Vector3(-Mathf.Sin(yaw), 0.0f, -Mathf.Cos(yaw));
+        Vector3 right = new Vector3(Mathf.Cos(yaw), 0.0f, -Mathf.Sin(yaw));
 
         Vector3 direction = (right * inputVector.X) + (forward * -inputVector.Y);
         return direction.Normalized();

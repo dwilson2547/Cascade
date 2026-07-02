@@ -7,10 +7,11 @@ namespace Cascade;
 /// ("Camera and movement decoupling") for the full design.
 ///
 /// _yaw is the single source of truth for horizontal orientation — it drives
-/// the camera's orbit position every tick, and is also written directly into
-/// the Player's Rotation.Y every tick. There is no separate "camera yaw"/
-/// "player yaw": unifying them is what makes "mouse rotates the character
-/// directly" work.
+/// the camera's orbit position every physics tick, and is also written
+/// directly into the Player's Rotation.Y on every mouse-motion event (not
+/// every tick — it simply doesn't need rewriting when the mouse hasn't
+/// moved). There is no separate "camera yaw"/"player yaw": unifying them is
+/// what makes "mouse rotates the character directly" work.
 ///
 /// Note: the free-orbit accumulation of _yaw/_pitch below is independent of
 /// this coupling and was previously reachable as a toggleable "free-look"
