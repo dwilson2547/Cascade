@@ -7,7 +7,7 @@
 # renderer falls back to a software (llvmpipe) implementation in this
 # environment and produces no visible output, while gl_compatibility picks up
 # the real GPU via WSL's D3D12 translation layer and renders correctly.
-GODOT_BIN="$HOME/tools/godot/Godot_v4.7-stable_mono_linux_x86_64/Godot_v4.7-stable_mono_linux.x86_64"
+GODOT_BIN="Godot_v4.7-stable_mono_linux.x86_64"  # resolved from PATH
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="/tmp/cascade_game.log"
 

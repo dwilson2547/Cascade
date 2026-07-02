@@ -58,7 +58,7 @@ will fail to launch with a "no loader found" / "referenced non-existent resource
 one-time headless import pass after adding a new asset, before launching:
 
 ```bash
-~/tools/godot/Godot_v4.7-stable_mono_linux_x86_64/Godot_v4.7-stable_mono_linux.x86_64 --headless --path . --import
+Godot_v4.7-stable_mono_linux.x86_64 --headless --path . --import   # binary resolved from PATH
 ```
 
 ---
