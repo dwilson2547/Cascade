@@ -5,8 +5,12 @@ power-ups, scaling enemies) comes after the movement feels undeniably good. Insp
 Warframe (bullet jump + infinite chaining), Crab Champions (omnidirectional slides), Risk of
 Rain 2 (mid-air direction redirect via jump).
 
-**Current state:** Empty scaffold. `project.godot` + `Cascade.csproj` exist. No scenes,
-no scripts, no gameplay. Next step: `CharacterBody3D` controller + movement state machine.
+**Current state:** Tasks 1-7 of the build-out below are done and Task 8 (Feel tuning) is underway
+via live playtesting. `scenes/MovementArena.tscn`, `scripts/Player.cs` (full movement state
+machine: grounded run, slide, jump/bullet-jump, air redirect, speed-capped air control in both
+Airborne and BulletJump), and `scripts/PlayerCamera.cs` (always camera-relative: camera orbits via
+mouse and unconditionally drives Player.Rotation.Y every tick — no RMB toggle) exist and build
+clean.
 
 ---
 
@@ -14,7 +18,48 @@ no scripts, no gameplay. Next step: `CharacterBody3D` controller + movement stat
 
 - **Engine:** Godot 4.7 (.NET)
 - **Language:** C# 12, .NET 8
-- **Renderer:** Forward Plus (3D)
+- **Renderer:** Forward Plus (3D) per `project.godot`, but see "Running the game" below — the
+  default renderer doesn't produce visible output in this dev sandbox (WSL2), so testing here
+  uses `--rendering-method gl_compatibility` instead.
+
+---
+
+## Running the game
+
+Standalone launch, not the Godot editor's embedded Game panel — the embedded panel's input
+forwarding is unreliable on WSL2 (see `games/ecosystem_sim/docs/issues/2026_06_30_godot_wsl2_embedded_panel_input.md`
+for the same issue hit on another project in this workspace). Use the project's own scripts:
+
+```bash
+./startup.sh   # launches the game (kills any existing instance first)
+./kill.sh      # kills a running instance
+```
+
+`startup.sh` launches Godot with `--rendering-method gl_compatibility` — the default Vulkan/
+Forward+ path falls back to a software (llvmpipe) renderer in this sandbox and produces a black
+window with no visible content; `gl_compatibility` picks up the real GPU via WSL's D3D12
+translation layer and renders correctly. Logs go to `/tmp/cascade_game.log`.
+
+**Known environment limitation:** `Input.MouseMode = Captured` (mouse-look/pointer-lock) doesn't
+reliably re-engage after the window loses and regains OS focus in this sandbox's nested display
+stack (Weston/XWayland under WSLg) — keyboard input is unaffected, only mouse-look silently stops
+working after a focus round-trip. This looks like an environment-specific limitation, not a code
+defect (the implementation follows Godot's standard pointer-lock API); it may not reproduce
+outside this sandbox. Workaround: relaunch via `./kill.sh && ./startup.sh` after tabbing away and
+back if mouse-look stops responding.
+
+**Controls:** WASD move (camera-relative) · C slide · Space jump (hold C + Space for a
+ground-based bullet jump) · mouse look (always coupled to character facing — mouse rotates the
+character directly, no lock toggle).
+
+**New asset gotcha:** this project has never been opened in the Godot editor, so newly added
+assets (textures, etc.) won't have the `.import` metadata Godot needs to load them, and the game
+will fail to launch with a "no loader found" / "referenced non-existent resource" error. Run a
+one-time headless import pass after adding a new asset, before launching:
+
+```bash
+~/tools/godot/Godot_v4.7-stable_mono_linux_x86_64/Godot_v4.7-stable_mono_linux.x86_64 --headless --path . --import
+```
 
 ---
 
@@ -24,15 +69,19 @@ no scripts, no gameplay. Next step: `CharacterBody3D` controller + movement stat
 Cascade/
 ├── project.godot
 ├── Cascade.csproj
+├── startup.sh                 # Launch the game standalone (see "Running the game")
+├── kill.sh                    # Kill a running instance
 ├── scenes/
-│   ├── Main.tscn              # Root scene
+│   ├── Main.tscn              # Root scene (not yet created — MovementArena.tscn is the only scene)
 │   └── MovementArena.tscn     # Flat test arena for movement prototyping
 ├── scripts/
 │   ├── Player.cs              # CharacterBody3D: owns state machine, reads input
 │   ├── MovementState.cs       # Enum: Grounded, Sliding, Airborne, BulletJump
-│   ├── PlayerCamera.cs        # Camera3D: free-orbit default, locks to player on RMB
+│   ├── PlayerCamera.cs        # Camera3D: always locked to player facing (no RMB toggle)
 │   └── ...
 └── assets/
+    └── textures/
+        └── ground_grid.png    # Tileable 1-meter grid texture on the test arena floor
 ```
 
 ---
@@ -54,6 +103,7 @@ This is the core of the game. Get this right before anything else.
 ```
 Grounded ──slide──> Sliding ──jump──> BulletJump (airborne, redirect charge available)
 Grounded ──jump──>  Airborne
+Grounded ──jump (slide held)──> BulletJump
 Sliding  ──jump──>  BulletJump
 BulletJump ──jump──> Airborne (redirect consumed, normal air)
 Airborne   ──land──> Grounded
@@ -89,20 +139,32 @@ momentum vector at initiation. This gives omnidirectionality for free — no spe
 
 ### Camera and movement decoupling
 
-**Default (free-look):**
-- WASD moves relative to camera forward (standard third-person)
-- Mouse orbits camera freely; character faces movement direction
+**Always camera-relative (current, only mode):**
+- WASD moves relative to camera forward (standard third-person) — `CameraRelativeDirection` in
+  Player.cs
+- Mouse orbits the camera (`_yaw`/`_pitch` in PlayerCamera.cs), and that same `_yaw` is written
+  into `Player.Rotation.Y` unconditionally, every tick — the camera always owns character facing,
+  there's no separate "character faces its velocity" behavior
 - Air redirects use (camera forward × WASD input) at the moment jump is pressed
+- Enables continuous mid-air steering via mouse — slide backwards while looking forward, change
+  trajectory in flight without pressing jump, no toggle needed to enable it
 
-**Right-click held (locked):**
-- Camera snaps and locks to character facing
-- Mouse now rotates the character directly
-- Enables continuous mid-air steering via mouse — slide backwards while looking forward,
-  change trajectory in flight without pressing jump
-- Release RMB to return to free-look
+This solves the ambiguity "I'm moving forward but looking left — do I slide backward?" by always
+answering "you steer with your face": turning the camera around mid-chain makes the "reverse" key
+continue your original momentum direction, since momentum (slide velocity, bullet-jump velocity)
+is a locked world-space vector that only decays via friction — only the meaning of forward/right
+for *new* input changes when the camera turns.
 
-This split solves the ambiguity: "I'm moving forward but looking left — do I slide backward?"
-Default mode: no, your slide follows your velocity. Locked mode: yes, you steer with your face.
+There used to be a toggle here (RMB held = "locked" mode as above; released = camera free-orbits
+independently while the character faces its velocity). That toggle never worked reliably and added
+overhead on top of managing momentum/chaining, so it was removed — the always-camera-relative
+behavior above is simply how the game works now, unconditionally.
+
+**Future note:** an independent free-orbit camera mode (camera separate from character facing) may
+come back later as a "time-slow" mechanic. The orbit math (`_yaw`/`_pitch` accumulation in
+PlayerCamera.cs) was deliberately left in place to make that easy to resurrect, but there is no
+mode-switching mechanism implemented or planned right now — this is a forward-looking note, not a
+spec for an existing feature.
 
 ### Chaining rules
 
@@ -114,14 +176,14 @@ Default mode: no, your slide follows your velocity. Locked mode: yes, you steer 
 
 ## What's next (in order)
 
-1. **MovementArena scene** — flat plane, placeholder capsule character, basic lighting
-2. **Player.cs + state machine** — `CharacterBody3D`, states as enum, `_PhysicsProcess` dispatch
-3. **Grounded movement** — WASD + camera-relative direction, run speed
-4. **Slide** — velocity vector capture at initiation, friction decay
-5. **Jump + BulletJump** — vertical launch with slide→jump boosting direction
-6. **Air redirect** — consume charge, recompute velocity from input
-7. **Camera (PlayerCamera.cs)** — free-orbit, RMB lock mode
-8. **Feel tuning** — speeds, friction curves, jump height, redirect strength
+1. ~~**MovementArena scene** — flat plane, placeholder capsule character, basic lighting~~ done
+2. ~~**Player.cs + state machine** — `CharacterBody3D`, states as enum, `_PhysicsProcess` dispatch~~ done
+3. ~~**Grounded movement** — WASD + camera-relative direction, run speed~~ done
+4. ~~**Slide** — velocity vector capture at initiation, friction decay~~ done
+5. ~~**Jump + BulletJump** — vertical launch with slide→jump boosting direction~~ done
+6. ~~**Air redirect** — consume charge, recompute velocity from input~~ done
+7. ~~**Camera (PlayerCamera.cs)** — orbit camera, always coupled to player facing~~ done
+8. **Feel tuning** — speeds, friction curves, jump height, redirect strength ← next
 9. **Then and only then:** roguelite shell (enemies, guns, rooms, power-ups)
 
 ---
